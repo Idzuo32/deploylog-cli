@@ -3,24 +3,9 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
 import { setApiKey, setApiUrl, getConfigPath, clearConfig } from './config.js'
-import {
-  listProjects,
-  listEntries,
-  createEntry,
-  summarize,
-  ApiError,
-  type AiSummary,
-} from './api.js'
+import { listProjects, listEntries, ApiError } from './api.js'
 import { readProjectConfig } from './project-config.js'
-import {
-  isGitRepo,
-  getLastTag,
-  getHeadVersion,
-  getCommitsSince,
-  defaultTitleFromGit,
-  formatCommitsAsMarkdown,
-  type CommitSummary,
-} from './git.js'
+import { runPush, type PushOptions } from './push.js'
 
 const program = new Command()
 
@@ -170,167 +155,38 @@ program
   .option('-a, --ai-summarize', 'Rewrite the entry with Claude Haiku (user-friendly release notes)')
   .option('--ai', 'Alias of --ai-summarize')
   .option('-y, --yes', 'Skip interactive confirmation for AI-generated content')
-  .action(async (opts: {
-    title?: string
-    body?: string
-    project?: string
-    type?: string
-    version?: string
-    publish?: boolean
-    draft?: boolean
-    fromGit?: boolean
-    git?: boolean
-    aiSummarize?: boolean
-    ai?: boolean
-    yes?: boolean
-  }) => {
+  .action(async (opts: PushOptions) => {
     try {
-      // Reconcile each flag with its alias (-g/--git, -a/--ai).
-      const fromGit = opts.fromGit || opts.git
-      const aiSummarize = opts.aiSummarize || opts.ai
-
-      const slug = resolveProject(opts.project)
-      const projectConfig = readProjectConfig()
-
-      // Gather source material (commits + version) if --from-git.
-      let commits: CommitSummary[] = []
-      let gitVersion: string | null = null
-      let gitTitle: string | null = null
-      let gitBody: string | null = null
-
-      if (fromGit) {
-        if (!isGitRepo()) {
-          console.error(chalk.red('Not in a git repository. Remove --from-git or cd to a repo.'))
+      const result = await runPush(opts)
+      switch (result.kind) {
+        case 'created': {
+          const entry = result.entry
+          const status = entry.published ? chalk.green('Published') : chalk.yellow('Draft')
+          console.log(`\n${chalk.green('✓')} Entry created: ${chalk.bold(entry.title)}`)
+          console.log(`  Status: ${status}`)
+          console.log(`  Slug:   ${chalk.dim(entry.slug)}`)
+          if (entry.version) console.log(`  Version: ${chalk.dim(`v${entry.version}`)}`)
+          break
+        }
+        case 'cancelled':
+          // User declined at the confirm prompt — a clean, non-error stop.
+          console.log(chalk.yellow(result.message))
+          break
+        case 'no-commits':
+          // Valid command, nothing to do — warn (yellow) and exit non-zero.
+          console.error(chalk.yellow(result.message))
           process.exit(1)
-        }
-        const lastTag = getLastTag()
-        commits = getCommitsSince(lastTag)
-        gitVersion = getHeadVersion()
-        gitTitle = defaultTitleFromGit(gitVersion, lastTag)
-        gitBody = formatCommitsAsMarkdown(commits)
-
-        if (commits.length === 0 && !opts.body && !aiSummarize) {
-          console.error(
-            chalk.yellow(
-              lastTag
-                ? `No commits since tag ${lastTag}. Nothing to summarize.`
-                : 'No commits found on HEAD.',
-            ),
-          )
+        default:
+          // no-ai-source | missing-fields — a misuse refusal.
+          console.error(chalk.red(result.message))
           process.exit(1)
-        }
       }
-
-      // Build the entry (with optional AI rewrite).
-      let title = opts.title ?? gitTitle ?? ''
-      let body = opts.body ?? gitBody ?? ''
-      let entryType = opts.type ?? projectConfig?.default_type ?? null
-      const version = opts.version ?? gitVersion ?? undefined
-
-      if (aiSummarize) {
-        const hasSource = commits.length > 0 || (opts.body && opts.body.trim().length > 0)
-        if (!hasSource) {
-          console.error(
-            chalk.red(
-              '--ai-summarize needs source material. Pass --from-git or provide --body as raw notes.',
-            ),
-          )
-          process.exit(1)
-        }
-
-        process.stdout.write(chalk.dim('Summarizing with Claude Haiku... '))
-        const res = await summarize({
-          project_slug: slug,
-          commits: commits.map((c) => c.subject),
-          release_notes: opts.body,
-          version,
-        })
-        process.stdout.write(chalk.green('done\n'))
-
-        title = opts.title ?? res.summary.title
-        body = res.summary.body_markdown
-        entryType = opts.type ?? res.summary.entry_type
-        printAiPreview(res.summary, res.usage)
-
-        if (!opts.yes && process.stdin.isTTY) {
-          const ok = await confirm('Publish this entry?')
-          if (!ok) {
-            console.log(chalk.yellow('Cancelled. No entry was created.'))
-            return
-          }
-        } else if (!opts.yes) {
-          // Non-interactive shell (CI, piped stdin): there's no prompt to show,
-          // so make the unreviewed auto-proceed explicit. (BUG-019)
-          console.log(
-            chalk.yellow(
-              'Non-interactive shell: proceeding with the AI-generated entry without confirmation.',
-            ),
-          )
-        }
-      }
-
-      if (!title || !body) {
-        console.error(
-          chalk.red(
-            'Entry requires --title and --body (or --from-git / --ai-summarize to derive them).',
-          ),
-        )
-        process.exit(1)
-      }
-
-      if (opts.publish && opts.draft) {
-        console.log(chalk.yellow('Both --publish and --draft passed; saving as a draft.'))
-      }
-
-      const entry = await createEntry(slug, {
-        title,
-        body_markdown: body,
-        entry_type: entryType,
-        version,
-        publish: opts.publish && !opts.draft,
-      })
-
-      const status = entry.published
-        ? chalk.green('Published')
-        : chalk.yellow('Draft')
-
-      console.log(`\n${chalk.green('✓')} Entry created: ${chalk.bold(entry.title)}`)
-      console.log(`  Status: ${status}`)
-      console.log(`  Slug:   ${chalk.dim(entry.slug)}`)
-      if (entry.version) console.log(`  Version: ${chalk.dim(`v${entry.version}`)}`)
     } catch (err) {
       handleError(err)
     }
   })
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-
-function printAiPreview(
-  summary: AiSummary,
-  usage: { used: number; limit: number | null; month_key: string },
-): void {
-  console.log()
-  console.log(chalk.bold('AI-generated entry:'))
-  console.log(`  ${chalk.dim('Title:')}  ${summary.title}`)
-  console.log(`  ${chalk.dim('Type:')}   ${summary.entry_type}`)
-  console.log(chalk.dim('  Body:'))
-  for (const line of summary.body_markdown.split('\n')) {
-    console.log(`    ${line}`)
-  }
-  const limitLabel = usage.limit === null ? '∞' : String(usage.limit)
-  console.log(chalk.dim(`  Usage:  ${usage.used}/${limitLabel} this month (${usage.month_key})`))
-  console.log()
-}
-
-async function confirm(question: string): Promise<boolean> {
-  const { createInterface } = await import('node:readline')
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  const answer = await new Promise<string>((resolve) => {
-    rl.question(`${question} [y/N] `, resolve)
-  })
-  rl.close()
-  return /^y(es)?$/i.test(answer.trim())
-}
 
 function resolveProject(cliArg?: string): string {
   if (cliArg) return cliArg

@@ -1,6 +1,6 @@
 # 01 — Testable push core: runPush(opts, deps) (B5)
 
-**Status:** ready-for-agent · **Type:** AFK · **Lane:** deploylog-cli
+**Status:** done · **Type:** AFK · **Lane:** deploylog-cli
 **Parent:** deploylog/docs/prd-satellites-hardening.md
 **Blocked by:** None — can start immediately
 **Verification:** contract B5.1-4 — table tests through `runPush` alone: precedence chains, publish/draft conflict, no-commits / no-ai-source guards, `--yes`/TTY matrix (BUG-019). Signal: `vitest run` (no process spawn, no network, no real git).
