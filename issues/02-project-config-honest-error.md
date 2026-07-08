@@ -1,6 +1,6 @@
 # 02 — Honest project-config error mode (A3)
 
-**Status:** ready-for-agent · **Type:** AFK · **Lane:** deploylog-cli
+**Status:** done · **Type:** AFK · **Lane:** deploylog-cli
 **Parent:** deploylog/docs/prd-satellites-hardening.md
 **Blocked by:** None — can start immediately
 **Verification:** contract A3.1-3 — tmp-dir tests: malformed YAML → explicit error + stop (no walk-up), not-found → keep walking → null, non-object YAML → typed error. Signal: `vitest run`.
