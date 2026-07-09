@@ -22,6 +22,7 @@ import {
   defaultEntryCommandDeps,
 } from './entry-commands.js'
 import { runInit, defaultInitDeps } from './init.js'
+import { runOpen } from './open.js'
 
 const program = new Command()
 
@@ -622,6 +623,37 @@ program
         }
         default:
           if (opts.json) printJsonError(result.kind.toUpperCase().replace(/-/g, '_'), result.message)
+          else console.error(chalk.red(result.message))
+          process.exit(1)
+      }
+    } catch (err) {
+      handleError(err, opts.json)
+    }
+  })
+
+// ─── open ───────────────────────────────────────────────────────────────────
+
+program
+  .command('open [entry]')
+  .alias('o')
+  .description("Open the project's public changelog (or one entry's page) in the browser")
+  .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (ref: string | undefined, opts: { project?: string; json?: boolean }) => {
+    try {
+      const result = await runOpen({ ref, project: opts.project })
+      switch (result.kind) {
+        case 'opened':
+          if (opts.json) printJson({ url: result.url, opened: true })
+          else console.log(chalk.dim(result.url))
+          break
+        case 'printed':
+          if (opts.json) printJson({ url: result.url, opened: false })
+          else console.log(result.url)
+          break
+        default:
+          if (opts.json)
+            printJsonError(result.kind.toUpperCase().replace(/-/g, '_'), result.message)
           else console.error(chalk.red(result.message))
           process.exit(1)
       }
