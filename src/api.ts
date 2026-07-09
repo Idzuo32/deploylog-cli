@@ -92,6 +92,22 @@ export async function createProject(name: string, websiteUrl?: string): Promise<
   })
 }
 
+export interface GithubImportResult {
+  imported: number
+  skipped: number
+}
+
+export async function importGithub(
+  projectSlug: string,
+  repo: string,
+  token?: string,
+): Promise<GithubImportResult> {
+  return request(`/projects/${projectSlug}/import/github`, {
+    method: 'POST',
+    body: JSON.stringify(token ? { repo, token } : { repo }),
+  })
+}
+
 export interface WhoAmI {
   organization: { name: string; slug: string; plan: string | null }
   api_key: {

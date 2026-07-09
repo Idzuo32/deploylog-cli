@@ -7,6 +7,7 @@ import {
   listProjects,
   listEntries,
   createProject,
+  importGithub,
   whoami,
   ApiError,
   type ListEntriesFilters,
@@ -435,6 +436,48 @@ program
       }
     },
   )
+
+// ─── import ─────────────────────────────────────────────────────────────────
+
+const importCmd = program
+  .command('import')
+  .description('Import entries from an external source')
+
+importCmd
+  .command('github <repo>')
+  .description('Import GitHub releases as draft entries (owner/repo or a github.com URL)')
+  .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
+  .option(
+    '--token <token>',
+    'GitHub personal access token for private repos / rate limits (or set DEPLOYLOG_GITHUB_TOKEN); never stored',
+  )
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (repo: string, opts: { project?: string; token?: string; json?: boolean }) => {
+    try {
+      const slug = resolveProject(opts.project)
+      const token = opts.token ?? process.env.DEPLOYLOG_GITHUB_TOKEN
+      const result = await importGithub(slug, repo, token)
+
+      if (opts.json) {
+        printJson(result)
+        return
+      }
+
+      if (result.imported === 0 && result.skipped === 0) {
+        console.log(chalk.yellow('No releases found to import.'))
+        return
+      }
+      console.log(
+        `${chalk.green('✓')} Imported ${chalk.bold(String(result.imported))} release${result.imported === 1 ? '' : 's'} as drafts` +
+          (result.skipped > 0 ? chalk.dim(` (${result.skipped} already imported, skipped)`) : ''),
+      )
+      if (result.imported > 0) {
+        console.log(chalk.dim('  Review with `deploylog list --drafts`, then `deploylog publish <slug>`.'))
+      }
+    } catch (err) {
+      handleError(err, opts.json)
+    }
+  })
 
 // ─── init ───────────────────────────────────────────────────────────────────
 
