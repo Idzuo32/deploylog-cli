@@ -6,6 +6,7 @@ import { setApiKey, setApiUrl, getConfigPath, clearConfig } from './config.js'
 import { listProjects, listEntries, ApiError } from './api.js'
 import { readProjectConfig } from './project-config.js'
 import { runPush, type PushOptions } from './push.js'
+import { runSetPublished } from './entry-commands.js'
 
 const program = new Command()
 
@@ -178,6 +179,71 @@ program
           process.exit(1)
         default:
           // no-ai-source | missing-fields — a misuse refusal.
+          console.error(chalk.red(result.message))
+          process.exit(1)
+      }
+    } catch (err) {
+      handleError(err)
+    }
+  })
+
+// ─── publish / unpublish ────────────────────────────────────────────────────
+
+program
+  .command('publish <entry>')
+  .alias('pub')
+  .description('Publish a draft entry (slug or id); sends the email digest on Pro')
+  .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
+  .action(async (ref: string, opts: { project?: string }) => {
+    try {
+      const result = await runSetPublished({ ref, project: opts.project, publish: true })
+      switch (result.kind) {
+        case 'updated': {
+          const e = result.entry
+          if (!e.changed) {
+            console.log(chalk.yellow(`Entry is already published — nothing to do.`))
+            console.log(`  ${chalk.dim('Slug:')} ${e.slug}`)
+            break
+          }
+          console.log(`${chalk.green('✓')} Published: ${chalk.bold(e.title)}`)
+          console.log(`  Slug: ${chalk.dim(e.slug)}`)
+          console.log(chalk.dim('  Subscribers get the email digest (Pro plans, first publish only).'))
+          break
+        }
+        default:
+          console.error(chalk.red(result.message))
+          process.exit(1)
+      }
+    } catch (err) {
+      handleError(err)
+    }
+  })
+
+program
+  .command('unpublish <entry>')
+  .alias('unpub')
+  .description('Revert a published entry to draft (its public URL and feeds drop it)')
+  .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
+  .action(async (ref: string, opts: { project?: string }) => {
+    try {
+      const result = await runSetPublished({ ref, project: opts.project, publish: false })
+      switch (result.kind) {
+        case 'updated': {
+          const e = result.entry
+          if (!e.changed) {
+            console.log(chalk.yellow(`Entry is already a draft — nothing to do.`))
+            break
+          }
+          console.log(`${chalk.green('✓')} Unpublished: ${chalk.bold(e.title)}`)
+          console.log(
+            chalk.dim(
+              '  The public page and feeds drop it (cached copies may lag a few minutes).\n' +
+                '  Republishing sets a new publish date.',
+            ),
+          )
+          break
+        }
+        default:
           console.error(chalk.red(result.message))
           process.exit(1)
       }

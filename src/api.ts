@@ -104,6 +104,26 @@ export async function createEntry(projectSlug: string, input: CreateEntryInput):
   })
 }
 
+/** Entry row returned by the publish route, plus whether the state actually changed. */
+export interface PublishStateEntry {
+  id: string
+  title: string
+  slug: string
+  published: boolean
+  published_at: string | null
+  changed: boolean
+}
+
+export async function setEntryPublished(
+  entryId: string,
+  published: boolean,
+): Promise<PublishStateEntry> {
+  return request(`/entries/${entryId}/publish`, {
+    method: 'POST',
+    body: JSON.stringify({ published }),
+  })
+}
+
 // ─── AI summarization ───────────────────────────────────────────────────────
 
 export interface SummarizeInput {
