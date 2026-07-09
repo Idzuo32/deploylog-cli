@@ -6,7 +6,12 @@ import { setApiKey, setApiUrl, getConfigPath, clearConfig } from './config.js'
 import { listProjects, listEntries, ApiError, type ListEntriesFilters } from './api.js'
 import { readProjectConfig } from './project-config.js'
 import { runPush, defaultPushDeps, type PushOptions } from './push.js'
-import { runSetPublished, runView } from './entry-commands.js'
+import {
+  runSetPublished,
+  runView,
+  runEdit,
+  defaultEntryCommandDeps,
+} from './entry-commands.js'
 
 const program = new Command()
 
@@ -296,6 +301,74 @@ program
       handleError(err, opts.json)
     }
   })
+
+// ─── edit ───────────────────────────────────────────────────────────────────
+
+program
+  .command('edit <entry>')
+  .description('Edit an entry (slug or id) via flags, --body-file, or $EDITOR')
+  .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
+  .option('-t, --title <title>', "New title (may change a draft's slug)")
+  .option('-T, --type <type>', 'Entry type: feature, fix, improvement, breaking, announcement')
+  .option('--version <version>', 'Semver version (pass "" to clear)')
+  .option('-b, --body <markdown>', 'New body (Markdown)')
+  .option('--body-file <path>', 'Read the new body from a file (- for stdin)')
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(
+    async (
+      ref: string,
+      opts: {
+        project?: string
+        title?: string
+        type?: string
+        version?: string
+        body?: string
+        bodyFile?: string
+        json?: boolean
+      },
+    ) => {
+      try {
+        // JSON mode never opens $EDITOR — force the non-interactive path.
+        const deps = opts.json ? { ...defaultEntryCommandDeps, isTTY: false } : undefined
+        const result = await runEdit({ ref, ...opts }, deps)
+        switch (result.kind) {
+          case 'updated': {
+            const e = result.entry
+            if (opts.json) {
+              printJson({ ...e, previous_slug: result.previousSlug })
+              break
+            }
+            console.log(`${chalk.green('✓')} Updated: ${chalk.bold(e.title)}`)
+            if (e.slug !== result.previousSlug) {
+              console.log(
+                chalk.yellow(`  Slug changed from '${result.previousSlug}' to '${e.slug}'.`),
+              )
+              console.log(chalk.dim('  Scripts referencing the old slug should switch to the id.'))
+            } else {
+              console.log(`  Slug: ${chalk.dim(e.slug)}`)
+            }
+            break
+          }
+          case 'unchanged':
+          case 'cancelled':
+            if (opts.json) printJsonError(result.kind.toUpperCase(), result.message)
+            else console.log(chalk.yellow(result.message))
+            break
+          case 'body-rejected':
+            if (opts.json) printJsonError('VALIDATION_ERROR', result.message)
+            else console.error(chalk.red(result.message))
+            process.exit(1)
+          default:
+            if (opts.json)
+              printJsonError(result.kind.toUpperCase().replace(/-/g, '_'), result.message)
+            else console.error(chalk.red(result.message))
+            process.exit(1)
+        }
+      } catch (err) {
+        handleError(err, opts.json)
+      }
+    },
+  )
 
 // ─── publish / unpublish ────────────────────────────────────────────────────
 

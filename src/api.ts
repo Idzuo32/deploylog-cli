@@ -113,6 +113,24 @@ export async function getEntry(entryId: string): Promise<EntryDetail> {
   return request(`/entries/${entryId}`)
 }
 
+export interface UpdateEntryInput {
+  title?: string
+  body_markdown?: string
+  entry_type?: string | null
+  version?: string
+  slug?: string
+}
+
+export async function updateEntry(
+  entryId: string,
+  input: UpdateEntryInput,
+): Promise<EntryDetail> {
+  return request(`/entries/${entryId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
 export interface CreateEntryInput {
   title: string
   body_markdown: string

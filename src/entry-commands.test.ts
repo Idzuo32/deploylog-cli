@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { runSetPublished, runView, type EntryCommandDeps } from './entry-commands.js'
-import type { Entry, EntryDetail, PublishStateEntry } from './api.js'
+import { runSetPublished, runView, runEdit, type EntryCommandDeps } from './entry-commands.js'
+import { ApiError, type Entry, type EntryDetail, type PublishStateEntry } from './api.js'
 
 const UUID = '3f2b8a1c-9d4e-4f6a-b2c3-1a2b3c4d5e6f'
 
@@ -39,9 +39,14 @@ function makeDeps(overrides: Partial<EntryCommandDeps> = {}): EntryCommandDeps {
     api: {
       listEntries: vi.fn().mockResolvedValue([entry()]),
       getEntry: vi.fn().mockResolvedValue(detail()),
+      updateEntry: vi.fn().mockResolvedValue(detail({ title: 'Updated' })),
       setEntryPublished: vi.fn().mockResolvedValue(published()),
     },
     readProjectConfig: () => null,
+    editor: vi.fn().mockReturnValue({ kind: 'edited', body: '# Edited' }),
+    saveRecovery: vi.fn().mockReturnValue('/tmp/recovery.md'),
+    readFile: vi.fn().mockReturnValue('# From file'),
+    isTTY: true,
     ...overrides,
   }
 }
@@ -128,5 +133,104 @@ describe('runView', () => {
 
     expect(res.kind).toBe('not-found')
     expect(deps.api.getEntry).not.toHaveBeenCalled()
+  })
+})
+
+describe('runEdit', () => {
+  it('sends only the provided flag fields', async () => {
+    const deps = makeDeps()
+    const res = await runEdit({ ref: 'ship-it', project: 'my-app', title: 'New title' }, deps)
+
+    expect(res.kind).toBe('updated')
+    expect(deps.api.updateEntry).toHaveBeenCalledWith('id-1', { title: 'New title' })
+    expect(deps.editor).not.toHaveBeenCalled()
+  })
+
+  it('reads the body from --body-file', async () => {
+    const deps = makeDeps()
+    await runEdit({ ref: 'ship-it', project: 'my-app', bodyFile: 'notes.md' }, deps)
+
+    expect(deps.readFile).toHaveBeenCalledWith('notes.md')
+    expect(deps.api.updateEntry).toHaveBeenCalledWith('id-1', { body_markdown: '# From file' })
+  })
+
+  it('refuses cleanly on an unreadable --body-file', async () => {
+    const deps = makeDeps({
+      readFile: vi.fn(() => {
+        throw new Error('ENOENT')
+      }),
+    })
+    const res = await runEdit({ ref: 'ship-it', project: 'my-app', bodyFile: 'gone.md' }, deps)
+
+    expect(res.kind).toBe('missing-fields')
+    expect(deps.api.updateEntry).not.toHaveBeenCalled()
+  })
+
+  it('opens $EDITOR prefilled with the current body when no flags are given (TTY)', async () => {
+    const deps = makeDeps()
+    const res = await runEdit({ ref: 'ship-it', project: 'my-app' }, deps)
+
+    expect(deps.editor).toHaveBeenCalledWith('# Body')
+    expect(deps.api.updateEntry).toHaveBeenCalledWith('id-1', { body_markdown: '# Edited' })
+    expect(res.kind).toBe('updated')
+  })
+
+  it('refuses the editor flow on a non-interactive shell', async () => {
+    const deps = makeDeps({ isTTY: false })
+    const res = await runEdit({ ref: 'ship-it', project: 'my-app' }, deps)
+
+    expect(res.kind).toBe('missing-fields')
+    expect(deps.editor).not.toHaveBeenCalled()
+  })
+
+  it('treats an unchanged editor round-trip as a no-op', async () => {
+    const deps = makeDeps({ editor: vi.fn().mockReturnValue({ kind: 'unchanged' }) })
+    const res = await runEdit({ ref: 'ship-it', project: 'my-app' }, deps)
+
+    expect(res.kind).toBe('unchanged')
+    expect(deps.api.updateEntry).not.toHaveBeenCalled()
+  })
+
+  it('treats a nonzero editor exit as cancelled', async () => {
+    const deps = makeDeps({
+      editor: vi.fn().mockReturnValue({ kind: 'aborted', message: 'Editor exited with status 1' }),
+    })
+    const res = await runEdit({ ref: 'ship-it', project: 'my-app' }, deps)
+
+    expect(res.kind).toBe('cancelled')
+  })
+
+  it('saves an editor-authored body to a recovery file when the server rejects it', async () => {
+    const deps = makeDeps()
+    deps.api.updateEntry = vi
+      .fn()
+      .mockRejectedValue(new ApiError(400, 'VALIDATION_ERROR', 'Body too long'))
+    const res = await runEdit({ ref: 'ship-it', project: 'my-app' }, deps)
+
+    expect(res.kind).toBe('body-rejected')
+    expect(deps.saveRecovery).toHaveBeenCalledWith('# Edited')
+    if (res.kind === 'body-rejected') {
+      expect(res.message).toContain('/tmp/recovery.md')
+    }
+  })
+
+  it('rethrows server rejections of flag-provided bodies (no recovery file needed)', async () => {
+    const deps = makeDeps()
+    deps.api.updateEntry = vi
+      .fn()
+      .mockRejectedValue(new ApiError(400, 'VALIDATION_ERROR', 'Body too long'))
+
+    await expect(
+      runEdit({ ref: 'ship-it', project: 'my-app', body: 'x' }, deps),
+    ).rejects.toBeInstanceOf(ApiError)
+    expect(deps.saveRecovery).not.toHaveBeenCalled()
+  })
+
+  it('reports the previous slug so the adapter can flag a slug change', async () => {
+    const deps = makeDeps()
+    deps.api.updateEntry = vi.fn().mockResolvedValue(detail({ slug: 'new-slug' }))
+    const res = await runEdit({ ref: 'ship-it', project: 'my-app', title: 'New' }, deps)
+
+    expect(res).toMatchObject({ kind: 'updated', previousSlug: 'ship-it' })
   })
 })
