@@ -29,6 +29,10 @@ const program = new Command()
 program
   .name('deploylog')
   .description('Push changelog entries from the terminal')
+  // Without positional options, the global -V/--version greedily matches
+  // `push --version 1.4.0` and prints the CLI version instead of setting the
+  // entry's semver. Program options now must precede the subcommand.
+  .enablePositionalOptions()
   .version('0.4.0')
 
 // ─── login ──────────────────────────────────────────────────────────────────
@@ -132,11 +136,14 @@ projectsCmd
   .description('Create a new project (slug is generated from the name)')
   .option('--url <url>', 'Project website URL')
   .option('--json', 'Output JSON (machine-readable, never prompts)')
-  .action(async (name: string, opts: { url?: string; json?: boolean }) => {
+  .action(async (name: string, opts: { url?: string; json?: boolean }, command: Command) => {
+    // The parent `projects` command also defines --json and commander hands
+    // the flag to whichever parsed it — honor both.
+    const json = Boolean(opts.json || command.optsWithGlobals().json)
     try {
       const project = await createProject(name, opts.url)
 
-      if (opts.json) {
+      if (json) {
         printJson(project)
         return
       }
@@ -146,7 +153,7 @@ projectsCmd
       console.log(chalk.dim(`  Public changelog: ${getApiUrl()}/p/${project.slug}/changelog`))
       console.log(chalk.dim('  Run `deploylog init` in the repo to wire pushes to it.'))
     } catch (err) {
-      handleError(err, opts.json)
+      handleError(err, json)
     }
   })
 
