@@ -13,6 +13,7 @@ import {
   runDelete,
   defaultEntryCommandDeps,
 } from './entry-commands.js'
+import { runInit, defaultInitDeps } from './init.js'
 
 const program = new Command()
 
@@ -370,6 +371,44 @@ program
       }
     },
   )
+
+// ─── init ───────────────────────────────────────────────────────────────────
+
+program
+  .command('init')
+  .description('Scaffold a .deploylog.yml in this directory (project + optional default type)')
+  .option('-p, --project <slug>', 'Project slug (interactive pick if omitted)')
+  .option('-T, --type <type>', 'Default entry type for pushes from this repo')
+  .option('--force', 'Overwrite an existing .deploylog.yml')
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (opts: { project?: string; type?: string; force?: boolean; json?: boolean }) => {
+    try {
+      const deps = opts.json ? { ...defaultInitDeps, isTTY: false } : undefined
+      const result = await runInit(opts, deps)
+      switch (result.kind) {
+        case 'written':
+          if (opts.json) {
+            printJson({ path: result.path, project: result.project, default_type: result.defaultType ?? null })
+            break
+          }
+          console.log(`${chalk.green('✓')} Wrote ${result.path}`)
+          console.log(`  project: ${chalk.cyan(result.project)}`)
+          if (result.defaultType) console.log(`  default_type: ${chalk.cyan(result.defaultType)}`)
+          console.log(chalk.dim('  `deploylog push` in this directory now targets that project.'))
+          break
+        case 'cancelled':
+          console.log(chalk.yellow(result.message))
+          break
+        default:
+          if (opts.json)
+            printJsonError(result.kind.toUpperCase().replace(/-/g, '_'), result.message)
+          else console.error(chalk.red(result.message))
+          process.exit(1)
+      }
+    } catch (err) {
+      handleError(err, opts.json)
+    }
+  })
 
 // ─── delete ─────────────────────────────────────────────────────────────────
 
