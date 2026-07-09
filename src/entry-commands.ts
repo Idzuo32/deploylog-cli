@@ -3,6 +3,7 @@ import {
   listEntries,
   getEntry,
   updateEntry,
+  deleteEntry,
   setEntryPublished,
   ApiError,
   type Entry,
@@ -13,6 +14,7 @@ import {
 import { readProjectConfig, type ProjectConfig } from './project-config.js'
 import { resolveEntryRef } from './resolve.js'
 import { editInEditor, saveRecoveryFile, type EditorResult } from './editor.js'
+import { defaultPushDeps } from './push.js'
 
 /**
  * Shared deps for the entry-lifecycle commands (publish/unpublish, and the
@@ -23,12 +25,14 @@ export interface EntryCommandDeps {
     listEntries(slug: string): Promise<Entry[]>
     getEntry(id: string): Promise<EntryDetail>
     updateEntry(id: string, input: UpdateEntryInput): Promise<EntryDetail>
+    deleteEntry(id: string): Promise<{ id: string }>
     setEntryPublished(id: string, published: boolean): Promise<PublishStateEntry>
   }
   readProjectConfig(): ProjectConfig | null
   editor(initial: string): EditorResult
   saveRecovery(body: string): string
   readFile(path: string): string
+  confirm(question: string): Promise<boolean>
   isTTY: boolean
 }
 
@@ -202,12 +206,70 @@ export async function runEdit(
   }
 }
 
+export interface DeleteOptions {
+  ref: string
+  project?: string
+  yes?: boolean
+}
+
+export type DeleteResult =
+  | { kind: 'deleted'; id: string; title: string }
+  | { kind: 'cancelled'; message: string }
+  | { kind: 'confirm-required'; message: string }
+  | { kind: 'not-found'; message: string }
+  | { kind: 'missing-fields'; message: string }
+
+export async function runDelete(
+  opts: DeleteOptions,
+  deps: EntryCommandDeps = defaultEntryCommandDeps,
+): Promise<DeleteResult> {
+  const projectConfig = deps.readProjectConfig()
+  const slug = opts.project ?? projectConfig?.project
+  if (!slug) {
+    return {
+      kind: 'missing-fields',
+      message:
+        'No project specified. Use --project <slug> or create a .deploylog.yml with:\n  project: my-app',
+    }
+  }
+
+  const resolved = await resolveEntryRef(opts.ref, slug, deps.api.listEntries)
+  if (resolved.kind === 'not-found') {
+    return { kind: 'not-found', message: resolved.message }
+  }
+
+  // Fetch first so the confirm prompt names what's about to be destroyed
+  // (and so a wrong-org/missing id 404s before any prompt).
+  const entry = await deps.api.getEntry(resolved.id)
+
+  if (!opts.yes) {
+    // Deleting is permanent — stricter than push: a non-interactive shell
+    // must opt in explicitly instead of auto-proceeding.
+    if (!deps.isTTY) {
+      return {
+        kind: 'confirm-required',
+        message: 'Refusing to delete without confirmation. Pass --yes in non-interactive mode.',
+      }
+    }
+    const ok = await deps.confirm(
+      `Delete '${entry.title}' (${entry.slug})? This is permanent.`,
+    )
+    if (!ok) {
+      return { kind: 'cancelled', message: 'Cancelled. Entry not deleted.' }
+    }
+  }
+
+  await deps.api.deleteEntry(resolved.id)
+  return { kind: 'deleted', id: resolved.id, title: entry.title }
+}
+
 export const defaultEntryCommandDeps: EntryCommandDeps = {
-  api: { listEntries, getEntry, updateEntry, setEntryPublished },
+  api: { listEntries, getEntry, updateEntry, deleteEntry, setEntryPublished },
   readProjectConfig: () => readProjectConfig(),
   editor: editInEditor,
   saveRecovery: saveRecoveryFile,
   // '-' reads stdin so agents/CI can pipe a body without a temp file.
   readFile: (path) => readFileSync(path === '-' ? 0 : path, 'utf8'),
+  confirm: (question) => defaultPushDeps.confirm(question),
   isTTY: Boolean(process.stdin.isTTY),
 }

@@ -131,6 +131,10 @@ export async function updateEntry(
   })
 }
 
+export async function deleteEntry(entryId: string): Promise<{ id: string }> {
+  return request(`/entries/${entryId}`, { method: 'DELETE' })
+}
+
 export interface CreateEntryInput {
   title: string
   body_markdown: string

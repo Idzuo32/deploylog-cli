@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { runSetPublished, runView, runEdit, type EntryCommandDeps } from './entry-commands.js'
+import {
+  runSetPublished,
+  runView,
+  runEdit,
+  runDelete,
+  type EntryCommandDeps,
+} from './entry-commands.js'
 import { ApiError, type Entry, type EntryDetail, type PublishStateEntry } from './api.js'
 
 const UUID = '3f2b8a1c-9d4e-4f6a-b2c3-1a2b3c4d5e6f'
@@ -40,12 +46,14 @@ function makeDeps(overrides: Partial<EntryCommandDeps> = {}): EntryCommandDeps {
       listEntries: vi.fn().mockResolvedValue([entry()]),
       getEntry: vi.fn().mockResolvedValue(detail()),
       updateEntry: vi.fn().mockResolvedValue(detail({ title: 'Updated' })),
+      deleteEntry: vi.fn().mockResolvedValue({ id: 'id-1' }),
       setEntryPublished: vi.fn().mockResolvedValue(published()),
     },
     readProjectConfig: () => null,
     editor: vi.fn().mockReturnValue({ kind: 'edited', body: '# Edited' }),
     saveRecovery: vi.fn().mockReturnValue('/tmp/recovery.md'),
     readFile: vi.fn().mockReturnValue('# From file'),
+    confirm: vi.fn().mockResolvedValue(true),
     isTTY: true,
     ...overrides,
   }
@@ -232,5 +240,49 @@ describe('runEdit', () => {
     const res = await runEdit({ ref: 'ship-it', project: 'my-app', title: 'New' }, deps)
 
     expect(res).toMatchObject({ kind: 'updated', previousSlug: 'ship-it' })
+  })
+})
+
+describe('runDelete', () => {
+  it('confirms on a TTY with the entry named, then deletes', async () => {
+    const deps = makeDeps()
+    const res = await runDelete({ ref: 'ship-it', project: 'my-app' }, deps)
+
+    expect(deps.confirm).toHaveBeenCalledWith(expect.stringContaining('Ship it'))
+    expect(deps.api.deleteEntry).toHaveBeenCalledWith('id-1')
+    expect(res).toMatchObject({ kind: 'deleted', id: 'id-1', title: 'Ship it' })
+  })
+
+  it('cancels without deleting when the prompt is declined', async () => {
+    const deps = makeDeps({ confirm: vi.fn().mockResolvedValue(false) })
+    const res = await runDelete({ ref: 'ship-it', project: 'my-app' }, deps)
+
+    expect(res.kind).toBe('cancelled')
+    expect(deps.api.deleteEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses on a non-interactive shell without --yes (stricter than push)', async () => {
+    const deps = makeDeps({ isTTY: false })
+    const res = await runDelete({ ref: 'ship-it', project: 'my-app' }, deps)
+
+    expect(res.kind).toBe('confirm-required')
+    expect(deps.api.deleteEntry).not.toHaveBeenCalled()
+  })
+
+  it('deletes without prompting when --yes is passed', async () => {
+    const deps = makeDeps({ isTTY: false })
+    const res = await runDelete({ ref: 'ship-it', project: 'my-app', yes: true }, deps)
+
+    expect(deps.confirm).not.toHaveBeenCalled()
+    expect(res.kind).toBe('deleted')
+  })
+
+  it('returns not-found before any prompt or delete call', async () => {
+    const deps = makeDeps()
+    const res = await runDelete({ ref: 'nope', project: 'my-app' }, deps)
+
+    expect(res.kind).toBe('not-found')
+    expect(deps.confirm).not.toHaveBeenCalled()
+    expect(deps.api.deleteEntry).not.toHaveBeenCalled()
   })
 })

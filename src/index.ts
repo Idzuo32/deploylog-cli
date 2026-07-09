@@ -10,6 +10,7 @@ import {
   runSetPublished,
   runView,
   runEdit,
+  runDelete,
   defaultEntryCommandDeps,
 } from './entry-commands.js'
 
@@ -369,6 +370,42 @@ program
       }
     },
   )
+
+// ─── delete ─────────────────────────────────────────────────────────────────
+
+program
+  .command('delete <entry>')
+  .alias('rm')
+  .description('Delete an entry permanently (slug or id)')
+  .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
+  .option('-y, --yes', 'Skip the confirmation prompt (required in non-interactive mode)')
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (ref: string, opts: { project?: string; yes?: boolean; json?: boolean }) => {
+    try {
+      // JSON mode never prompts — deletion then requires an explicit --yes.
+      const deps = opts.json ? { ...defaultEntryCommandDeps, isTTY: false } : undefined
+      const result = await runDelete({ ref, project: opts.project, yes: opts.yes }, deps)
+      switch (result.kind) {
+        case 'deleted':
+          if (opts.json) {
+            printJson({ id: result.id, title: result.title, deleted: true })
+            break
+          }
+          console.log(`${chalk.green('✓')} Deleted: ${chalk.bold(result.title)}`)
+          break
+        case 'cancelled':
+          console.log(chalk.yellow(result.message))
+          break
+        default:
+          if (opts.json)
+            printJsonError(result.kind.toUpperCase().replace(/-/g, '_'), result.message)
+          else console.error(chalk.red(result.message))
+          process.exit(1)
+      }
+    } catch (err) {
+      handleError(err, opts.json)
+    }
+  })
 
 // ─── publish / unpublish ────────────────────────────────────────────────────
 
