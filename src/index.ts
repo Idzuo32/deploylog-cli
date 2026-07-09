@@ -2,8 +2,15 @@
 
 import { Command } from 'commander'
 import chalk from 'chalk'
-import { setApiKey, setApiUrl, getConfigPath, clearConfig } from './config.js'
-import { listProjects, listEntries, ApiError, type ListEntriesFilters } from './api.js'
+import { setApiKey, setApiUrl, getApiUrl, getConfigPath, clearConfig } from './config.js'
+import {
+  listProjects,
+  listEntries,
+  createProject,
+  whoami,
+  ApiError,
+  type ListEntriesFilters,
+} from './api.js'
 import { readProjectConfig } from './project-config.js'
 import { runPush, defaultPushDeps, type PushOptions } from './push.js'
 import {
@@ -90,7 +97,7 @@ program
 
 // ─── projects ───────────────────────────────────────────────────────────────
 
-program
+const projectsCmd = program
   .command('projects')
   .alias('proj')
   .description('List projects in your organization')
@@ -113,6 +120,63 @@ program
       for (const p of projects) {
         console.log(`  ${chalk.cyan(p.name)}  ${chalk.dim(p.slug)}`)
       }
+    } catch (err) {
+      handleError(err, opts.json)
+    }
+  })
+
+projectsCmd
+  .command('create <name>')
+  .description('Create a new project (slug is generated from the name)')
+  .option('--url <url>', 'Project website URL')
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (name: string, opts: { url?: string; json?: boolean }) => {
+    try {
+      const project = await createProject(name, opts.url)
+
+      if (opts.json) {
+        printJson(project)
+        return
+      }
+
+      console.log(`${chalk.green('✓')} Project created: ${chalk.bold(project.name)}`)
+      console.log(`  Slug: ${chalk.cyan(project.slug)}`)
+      console.log(chalk.dim(`  Public changelog: ${getApiUrl()}/p/${project.slug}/changelog`))
+      console.log(chalk.dim('  Run `deploylog init` in the repo to wire pushes to it.'))
+    } catch (err) {
+      handleError(err, opts.json)
+    }
+  })
+
+// ─── whoami ─────────────────────────────────────────────────────────────────
+
+program
+  .command('whoami')
+  .description('Show the authenticated org, plan, API key, and AI usage')
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (opts: { json?: boolean }) => {
+    try {
+      const me = await whoami()
+
+      if (opts.json) {
+        printJson({ ...me, api_url: getApiUrl(), config_path: getConfigPath() })
+        return
+      }
+
+      const limitLabel = me.ai_usage.limit === null ? '∞' : String(me.ai_usage.limit)
+      console.log(`${chalk.bold(me.organization.name)}  ${chalk.dim(me.organization.slug)}`)
+      console.log(`  Plan:     ${chalk.cyan(me.organization.plan ?? 'free')}`)
+      console.log(
+        `  API key:  ${me.api_key.name}  ${chalk.dim(`${me.api_key.prefix}…  [${me.api_key.permissions.join(', ')}]`)}`,
+      )
+      if (me.api_key.last_used_at) {
+        console.log(chalk.dim(`  Last used: ${me.api_key.last_used_at}`))
+      }
+      console.log(
+        `  AI usage: ${me.ai_usage.used}/${limitLabel} this month ${chalk.dim(`(${me.ai_usage.month_key})`)}`,
+      )
+      console.log(chalk.dim(`  API URL:  ${getApiUrl()}`))
+      console.log(chalk.dim(`  Config:   ${getConfigPath()}`))
     } catch (err) {
       handleError(err, opts.json)
     }

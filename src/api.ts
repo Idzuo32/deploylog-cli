@@ -85,6 +85,29 @@ export async function listProjects(): Promise<Project[]> {
   return request('/projects')
 }
 
+export async function createProject(name: string, websiteUrl?: string): Promise<Project> {
+  return request('/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name, website_url: websiteUrl ?? '' }),
+  })
+}
+
+export interface WhoAmI {
+  organization: { name: string; slug: string; plan: string | null }
+  api_key: {
+    name: string
+    prefix: string
+    permissions: string[]
+    last_used_at: string | null
+    created_at: string
+  }
+  ai_usage: { used: number; limit: number | null; month_key: string }
+}
+
+export async function whoami(): Promise<WhoAmI> {
+  return request('/whoami')
+}
+
 export interface ListEntriesFilters {
   status?: 'draft' | 'published'
   type?: string
