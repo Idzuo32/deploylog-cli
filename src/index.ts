@@ -3,10 +3,10 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
 import { setApiKey, setApiUrl, getConfigPath, clearConfig } from './config.js'
-import { listProjects, listEntries, ApiError } from './api.js'
+import { listProjects, listEntries, ApiError, type ListEntriesFilters } from './api.js'
 import { readProjectConfig } from './project-config.js'
-import { runPush, type PushOptions } from './push.js'
-import { runSetPublished } from './entry-commands.js'
+import { runPush, defaultPushDeps, type PushOptions } from './push.js'
+import { runSetPublished, runView } from './entry-commands.js'
 
 const program = new Command()
 
@@ -85,10 +85,17 @@ program
 
 program
   .command('projects')
+  .alias('proj')
   .description('List projects in your organization')
-  .action(async () => {
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (opts: { json?: boolean }) => {
     try {
       const projects = await listProjects()
+
+      if (opts.json) {
+        printJson(projects)
+        return
+      }
 
       if (projects.length === 0) {
         console.log(chalk.dim('No projects found.'))
@@ -100,7 +107,7 @@ program
         console.log(`  ${chalk.cyan(p.name)}  ${chalk.dim(p.slug)}`)
       }
     } catch (err) {
-      handleError(err)
+      handleError(err, opts.json)
     }
   })
 
@@ -108,34 +115,116 @@ program
 
 program
   .command('list')
+  .alias('ls')
   .description('List recent entries for a project')
   .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
-  .action(async (opts: { project?: string }) => {
-    try {
-      const slug = resolveProject(opts.project)
-      const entries = await listEntries(slug)
+  .option('--drafts', 'Only drafts')
+  .option('--published', 'Only published entries')
+  .option('-T, --type <type>', 'Filter by entry type')
+  .option('-n, --limit <n>', 'Max entries to show (1-50)', (v) => parseInt(v, 10))
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(
+    async (opts: {
+      project?: string
+      drafts?: boolean
+      published?: boolean
+      type?: string
+      limit?: number
+      json?: boolean
+    }) => {
+      try {
+        if (opts.drafts && opts.published) {
+          console.error(chalk.red('Use at most one of --drafts / --published.'))
+          process.exit(1)
+        }
 
-      if (entries.length === 0) {
-        console.log(chalk.dim('No entries found.'))
+        const slug = resolveProject(opts.project)
+        const filters: ListEntriesFilters = {}
+        if (opts.drafts) filters.status = 'draft'
+        if (opts.published) filters.status = 'published'
+        if (opts.type) filters.type = opts.type
+        if (opts.limit !== undefined) filters.limit = opts.limit
+
+        const entries = await listEntries(slug, filters)
+
+        if (opts.json) {
+          printJson(entries)
+          return
+        }
+
+        if (entries.length === 0) {
+          console.log(chalk.dim('No entries found.'))
+          return
+        }
+
+        console.log(chalk.bold(`Entries for ${slug}:\n`))
+        for (const e of entries) {
+          const status = e.published
+            ? chalk.green('published')
+            : chalk.yellow('draft')
+          const type = e.entry_type ? chalk.dim(`[${e.entry_type}]`) : ''
+          const version = e.version ? chalk.dim(`v${e.version}`) : ''
+          const date = new Date(e.created_at).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          })
+
+          console.log(`  ${status}  ${e.title}  ${type}  ${version}  ${chalk.dim(date)}`)
+          console.log(`    ${chalk.dim(`${e.slug}  ${e.id}`)}`)
+        }
+
+        const effectiveLimit = filters.limit ?? 50
+        if (entries.length >= effectiveLimit) {
+          console.log(
+            chalk.dim(
+              `\nShowing the ${entries.length} most recent. Older entries: narrow with --drafts / --published / --type, or reference by id.`,
+            ),
+          )
+        }
+      } catch (err) {
+        handleError(err, opts.json)
+      }
+    },
+  )
+
+// ─── view ───────────────────────────────────────────────────────────────────
+
+program
+  .command('view <entry>')
+  .alias('show')
+  .description('Show a full entry (slug or id), including its markdown body')
+  .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (ref: string, opts: { project?: string; json?: boolean }) => {
+    try {
+      const result = await runView({ ref, project: opts.project })
+      if (result.kind !== 'found') {
+        if (opts.json) {
+          printJsonError('NOT_FOUND', result.message)
+        } else {
+          console.error(chalk.red(result.message))
+        }
+        process.exit(1)
+      }
+
+      const e = result.entry
+      if (opts.json) {
+        printJson(e)
         return
       }
 
-      console.log(chalk.bold(`Entries for ${slug}:\n`))
-      for (const e of entries) {
-        const status = e.published
-          ? chalk.green('published')
-          : chalk.yellow('draft')
-        const type = e.entry_type ? chalk.dim(`[${e.entry_type}]`) : ''
-        const version = e.version ? chalk.dim(`v${e.version}`) : ''
-        const date = new Date(e.created_at).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        })
-
-        console.log(`  ${status}  ${e.title}  ${type}  ${version}  ${chalk.dim(date)}`)
-      }
+      const status = e.published ? chalk.green('published') : chalk.yellow('draft')
+      console.log(`${chalk.bold(e.title)}  ${status}`)
+      console.log(chalk.dim(`  id:      ${e.id}`))
+      console.log(chalk.dim(`  slug:    ${e.slug}`))
+      if (e.entry_type) console.log(chalk.dim(`  type:    ${e.entry_type}`))
+      if (e.version) console.log(chalk.dim(`  version: v${e.version}`))
+      console.log(chalk.dim(`  created: ${e.created_at}`))
+      if (e.published_at) console.log(chalk.dim(`  published: ${e.published_at}`))
+      console.log()
+      console.log(e.body_markdown)
     } catch (err) {
-      handleError(err)
+      handleError(err, opts.json)
     }
   })
 
@@ -156,12 +245,31 @@ program
   .option('-a, --ai-summarize', 'Rewrite the entry with Claude Haiku (user-friendly release notes)')
   .option('--ai', 'Alias of --ai-summarize')
   .option('-y, --yes', 'Skip interactive confirmation for AI-generated content')
-  .action(async (opts: PushOptions) => {
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (opts: PushOptions & { json?: boolean }) => {
     try {
-      const result = await runPush(opts)
+      // JSON mode is a machine contract: no prompts (non-TTY path), progress
+      // and notices to stderr, stdout reserved for the data payload.
+      const deps = opts.json
+        ? {
+            ...defaultPushDeps,
+            isTTY: false,
+            out: {
+              progressStart: (msg: string) => process.stderr.write(`${msg} `),
+              progressDone: (msg: string) => process.stderr.write(`${msg}\n`),
+              notice: (msg: string) => console.error(msg),
+              aiPreview: () => {},
+            },
+          }
+        : defaultPushDeps
+      const result = await runPush(opts, deps)
       switch (result.kind) {
         case 'created': {
           const entry = result.entry
+          if (opts.json) {
+            printJson(entry)
+            break
+          }
           const status = entry.published ? chalk.green('Published') : chalk.yellow('Draft')
           console.log(`\n${chalk.green('✓')} Entry created: ${chalk.bold(entry.title)}`)
           console.log(`  Status: ${status}`)
@@ -175,15 +283,17 @@ program
           break
         case 'no-commits':
           // Valid command, nothing to do — warn (yellow) and exit non-zero.
-          console.error(chalk.yellow(result.message))
+          if (opts.json) printJsonError('NO_COMMITS', result.message)
+          else console.error(chalk.yellow(result.message))
           process.exit(1)
         default:
           // no-ai-source | missing-fields — a misuse refusal.
-          console.error(chalk.red(result.message))
+          if (opts.json) printJsonError(result.kind.toUpperCase().replace(/-/g, '_'), result.message)
+          else console.error(chalk.red(result.message))
           process.exit(1)
       }
     } catch (err) {
-      handleError(err)
+      handleError(err, opts.json)
     }
   })
 
@@ -194,12 +304,17 @@ program
   .alias('pub')
   .description('Publish a draft entry (slug or id); sends the email digest on Pro')
   .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
-  .action(async (ref: string, opts: { project?: string }) => {
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (ref: string, opts: { project?: string; json?: boolean }) => {
     try {
       const result = await runSetPublished({ ref, project: opts.project, publish: true })
       switch (result.kind) {
         case 'updated': {
           const e = result.entry
+          if (opts.json) {
+            printJson(e)
+            break
+          }
           if (!e.changed) {
             console.log(chalk.yellow(`Entry is already published — nothing to do.`))
             console.log(`  ${chalk.dim('Slug:')} ${e.slug}`)
@@ -211,11 +326,12 @@ program
           break
         }
         default:
-          console.error(chalk.red(result.message))
+          if (opts.json) printJsonError(result.kind.toUpperCase().replace(/-/g, '_'), result.message)
+          else console.error(chalk.red(result.message))
           process.exit(1)
       }
     } catch (err) {
-      handleError(err)
+      handleError(err, opts.json)
     }
   })
 
@@ -224,12 +340,17 @@ program
   .alias('unpub')
   .description('Revert a published entry to draft (its public URL and feeds drop it)')
   .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
-  .action(async (ref: string, opts: { project?: string }) => {
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (ref: string, opts: { project?: string; json?: boolean }) => {
     try {
       const result = await runSetPublished({ ref, project: opts.project, publish: false })
       switch (result.kind) {
         case 'updated': {
           const e = result.entry
+          if (opts.json) {
+            printJson(e)
+            break
+          }
           if (!e.changed) {
             console.log(chalk.yellow(`Entry is already a draft — nothing to do.`))
             break
@@ -244,11 +365,12 @@ program
           break
         }
         default:
-          console.error(chalk.red(result.message))
+          if (opts.json) printJsonError(result.kind.toUpperCase().replace(/-/g, '_'), result.message)
+          else console.error(chalk.red(result.message))
           process.exit(1)
       }
     } catch (err) {
-      handleError(err)
+      handleError(err, opts.json)
     }
   })
 
@@ -266,7 +388,26 @@ function resolveProject(cliArg?: string): string {
   process.exit(1)
 }
 
-function handleError(err: unknown): void {
+/** JSON mode: raw data on stdout, so output pipes into jq/scripts cleanly. */
+function printJson(data: unknown): void {
+  console.log(JSON.stringify(data, null, 2))
+}
+
+/** JSON mode errors go to stderr in the API's own error envelope shape. */
+function printJsonError(code: string, message: string): void {
+  console.error(JSON.stringify({ error: { code, message } }))
+}
+
+function handleError(err: unknown, json?: boolean): void {
+  if (json) {
+    if (err instanceof ApiError) {
+      printJsonError(err.code, err.message)
+    } else {
+      printJsonError('ERROR', err instanceof Error ? err.message : 'An unknown error occurred')
+    }
+    process.exit(1)
+  }
+
   if (err instanceof ApiError) {
     console.error(chalk.red(`Error: ${err.message}`))
     if (err.status === 401) {

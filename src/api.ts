@@ -85,8 +85,32 @@ export async function listProjects(): Promise<Project[]> {
   return request('/projects')
 }
 
-export async function listEntries(projectSlug: string): Promise<Entry[]> {
-  return request(`/projects/${projectSlug}/entries`)
+export interface ListEntriesFilters {
+  status?: 'draft' | 'published'
+  type?: string
+  limit?: number
+}
+
+export async function listEntries(
+  projectSlug: string,
+  filters: ListEntriesFilters = {},
+): Promise<Entry[]> {
+  const params = new URLSearchParams()
+  if (filters.status) params.set('status', filters.status)
+  if (filters.type) params.set('type', filters.type)
+  if (filters.limit !== undefined) params.set('limit', String(filters.limit))
+  const qs = params.toString()
+  return request(`/projects/${projectSlug}/entries${qs ? `?${qs}` : ''}`)
+}
+
+/** Full entry including the markdown body — the single-entry GET. */
+export interface EntryDetail extends Entry {
+  body_markdown: string
+  updated_at: string | null
+}
+
+export async function getEntry(entryId: string): Promise<EntryDetail> {
+  return request(`/entries/${entryId}`)
 }
 
 export interface CreateEntryInput {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { runSetPublished, type EntryCommandDeps } from './entry-commands.js'
-import type { Entry, PublishStateEntry } from './api.js'
+import { runSetPublished, runView, type EntryCommandDeps } from './entry-commands.js'
+import type { Entry, EntryDetail, PublishStateEntry } from './api.js'
 
 const UUID = '3f2b8a1c-9d4e-4f6a-b2c3-1a2b3c4d5e6f'
 
@@ -30,10 +30,15 @@ function published(overrides: Partial<PublishStateEntry> = {}): PublishStateEntr
   }
 }
 
+function detail(overrides: Partial<EntryDetail> = {}): EntryDetail {
+  return { ...entry(), body_markdown: '# Body', updated_at: null, ...overrides }
+}
+
 function makeDeps(overrides: Partial<EntryCommandDeps> = {}): EntryCommandDeps {
   return {
     api: {
       listEntries: vi.fn().mockResolvedValue([entry()]),
+      getEntry: vi.fn().mockResolvedValue(detail()),
       setEntryPublished: vi.fn().mockResolvedValue(published()),
     },
     readProjectConfig: () => null,
@@ -92,5 +97,36 @@ describe('runSetPublished', () => {
     const res = await runSetPublished({ ref: 'ship-it', project: 'my-app', publish: true }, deps)
 
     expect(res).toMatchObject({ kind: 'updated', entry: { changed: false } })
+  })
+})
+
+describe('runView', () => {
+  it('refuses without a project', async () => {
+    const res = await runView({ ref: 'ship-it' }, makeDeps())
+    expect(res.kind).toBe('missing-fields')
+  })
+
+  it('resolves a slug and fetches the full entry', async () => {
+    const deps = makeDeps()
+    const res = await runView({ ref: 'ship-it', project: 'my-app' }, deps)
+
+    expect(res).toMatchObject({ kind: 'found', entry: { body_markdown: '# Body' } })
+    expect(deps.api.getEntry).toHaveBeenCalledWith('id-1')
+  })
+
+  it('fetches a uuid ref directly without listing', async () => {
+    const deps = makeDeps()
+    await runView({ ref: UUID, project: 'my-app' }, deps)
+
+    expect(deps.api.listEntries).not.toHaveBeenCalled()
+    expect(deps.api.getEntry).toHaveBeenCalledWith(UUID)
+  })
+
+  it('returns not-found for an unknown slug', async () => {
+    const deps = makeDeps()
+    const res = await runView({ ref: 'nope', project: 'my-app' }, deps)
+
+    expect(res.kind).toBe('not-found')
+    expect(deps.api.getEntry).not.toHaveBeenCalled()
   })
 })
