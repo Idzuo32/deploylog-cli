@@ -23,6 +23,7 @@ import {
 } from './entry-commands.js'
 import { runInit, defaultInitDeps } from './init.js'
 import { runOpen } from './open.js'
+import { runManualExport } from './manual.js'
 
 const program = new Command()
 
@@ -186,6 +187,41 @@ program
       )
       console.log(chalk.dim(`  API URL:  ${getApiUrl()}`))
       console.log(chalk.dim(`  Config:   ${getConfigPath()}`))
+    } catch (err) {
+      handleError(err, opts.json)
+    }
+  })
+
+// ─── manual ─────────────────────────────────────────────────────────────────
+
+const manual = program.command('manual').description('Work with a project\'s manual')
+
+manual
+  .command('export')
+  .description('Export the whole manual (every version, commit map, chapter and claim) as JSON')
+  .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
+  .option('-o, --out <path>', 'Output file (default: ./<slug>-manual.json; - for stdout)')
+  .option('--json', 'Output JSON (machine-readable, never prompts)')
+  .action(async (opts: { project?: string; out?: string; json?: boolean }) => {
+    try {
+      const result = await runManualExport({ project: opts.project, out: opts.out })
+      switch (result.kind) {
+        case 'written':
+          if (opts.json) printJson({ path: result.path, versions: result.versions })
+          else
+            console.log(
+              `${chalk.green('✓')} Wrote ${chalk.bold(result.path)} ${chalk.dim(`(${result.versions} version${result.versions === 1 ? '' : 's'})`)}`,
+            )
+          break
+        case 'streamed':
+          // The payload is already on stdout and is the whole of stdout.
+          break
+        default:
+          if (opts.json)
+            printJsonError(result.kind.toUpperCase().replace(/-/g, '_'), result.message)
+          else console.error(chalk.red(result.message))
+          process.exit(1)
+      }
     } catch (err) {
       handleError(err, opts.json)
     }

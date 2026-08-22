@@ -8,7 +8,7 @@ vi.mock('./config.js', () => ({
   getApiUrl: () => getApiUrl(),
 }))
 
-import { listProjects, createEntry, ApiError } from './api.js'
+import { listProjects, createEntry, exportManual, ApiError } from './api.js'
 
 function fetchReturning(status: number, body: string, ok?: boolean) {
   return vi.fn().mockResolvedValue({
@@ -97,5 +97,18 @@ describe('createEntry()', () => {
     expect(url).toBe('https://deploylog.dev/api/cli/projects/proj/entries')
     expect(opts.method).toBe('POST')
     expect(JSON.parse(opts.body as string)).toEqual({ title: 'x', body_markdown: 'b' })
+  })
+})
+
+describe('exportManual()', () => {
+  it('GETs /api/cli/manual/export?project=<slug> and returns the raw data', async () => {
+    const fetchMock = fetchReturning(200, JSON.stringify({ data: { project: 'my app' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(exportManual('my app')).resolves.toEqual({ project: 'my app' })
+
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://deploylog.dev/api/cli/manual/export?project=my+app')
+    expect(opts.method ?? 'GET').toBe('GET')
   })
 })
