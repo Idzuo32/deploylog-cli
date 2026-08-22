@@ -1,6 +1,6 @@
 # 03 — `deploylog manual export`: the CLI half of the portability answer
 
-**Status:** ready-for-agent (server route merged 2026-08-22 as deploylog PR #86; blocked only on it being deployed to prod) · **Type:** AFK · **Lane:** deploylog-cli
+**Status:** in flight — `feat/03-manual-export` dispatched 2026-08-23 (route live on prod: answers 401) · **Type:** AFK · **Lane:** deploylog-cli
 **Parent:** deploylog/issues/57-manual-export.md (server half, done) → deploylog/issues/prd-manual.md
 **Blocked by:** None in this repo. Observable arm needs `GET /api/cli/manual/export` live on deploylog.dev.
 **Verification:** `vitest run` — a command test with a mocked `api.ts` response: writes the file, refuses on a payload that fails the response schema, exits non-zero on 404. Signal: `vitest run`.
