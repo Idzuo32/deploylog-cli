@@ -1,6 +1,6 @@
 # 03 — `deploylog manual export`: the CLI half of the portability answer
 
-**Status:** PR open — #8 `feat/03-manual-export` (2026-08-23, 115 tests; Marko merges + publishes 0.5.0). Probed against prod read-only: 1 version / 1 chapter / 26 claims validated against the mirror. Decision for Marko: the mirror added `zod` as a runtime dep (the CLI had none; "existing mirror convention" in this ticket was wrong, there was none) · **Type:** AFK · **Lane:** deploylog-cli
+**Status:** done 2026-08-24 — PR #8 merged (f2366b6), zod runtime dep accepted (tsc-only build, no bundler; server's own major), 0.5.0 bumped, `npm publish` is Marko's · **Type:** AFK · **Lane:** deploylog-cli
 **Parent:** deploylog/issues/57-manual-export.md (server half, done) → deploylog/issues/prd-manual.md
 **Blocked by:** None in this repo. Observable arm needs `GET /api/cli/manual/export` live on deploylog.dev.
 **Verification:** `vitest run` — a command test with a mocked `api.ts` response: writes the file, refuses on a payload that fails the response schema, exits non-zero on 404. Signal: `vitest run`.

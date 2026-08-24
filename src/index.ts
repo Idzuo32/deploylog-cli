@@ -34,7 +34,7 @@ program
   // `push --version 1.4.0` and prints the CLI version instead of setting the
   // entry's semver. Program options now must precede the subcommand.
   .enablePositionalOptions()
-  .version('0.4.0')
+  .version('0.5.0')
 
 // ─── login ──────────────────────────────────────────────────────────────────
 
