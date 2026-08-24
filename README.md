@@ -110,6 +110,15 @@ Create a project. The slug is generated from the name.
 
 Show the authenticated org, plan, API key (name, prefix, permissions), and AI usage this month.
 
+### `deploylog manual export`
+
+Export a project's whole manual as JSON: every version with its commit map, and every chapter with its claims. The payload is validated against the server's published schema before anything is written, and the export is available on every plan.
+
+```
+-p, --project <slug>   Project slug (or set in .deploylog.yml)
+-o, --out <path>       Output file (default: ./<slug>-manual.json; - for stdout)
+```
+
 ### `deploylog list` (alias: `ls`)
 
 List recent entries for a project. Prints each entry's slug and id.

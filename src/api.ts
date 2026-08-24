@@ -247,3 +247,15 @@ export async function summarize(input: SummarizeInput): Promise<SummarizeRespons
     body: JSON.stringify(input),
   })
 }
+
+// ─── Manual export ──────────────────────────────────────────────────────────
+
+/**
+ * `GET /api/cli/manual/export?project=<slug>`. Returns the body untyped on
+ * purpose: the caller validates it against the mirrored server schema
+ * (`manual-schema.ts`) before anything is written.
+ */
+export async function exportManual(projectSlug: string): Promise<unknown> {
+  const params = new URLSearchParams({ project: projectSlug })
+  return request(`/manual/export?${params.toString()}`)
+}
