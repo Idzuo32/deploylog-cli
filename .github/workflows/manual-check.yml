@@ -1,0 +1,26 @@
+# The DeployLog manual's chapter 05 (The CLI) cites this repository. A run of the
+# Action's verify mode can only check the claims that cite the repository it runs in
+# (chapter 06), so without this workflow those claims are verified by no push anywhere:
+# `deploylog manual verify` from the deploylog repo reported them unmapped on 2026-08-25.
+# Annotations land on the changed lines; the check stays green (fail-on: none), the same
+# posture as the deploylog repo's own manual-check.yml. Flip to `fail-on: drift` when a
+# drift should block a merge.
+#
+# Needs the DEPLOYLOG_API_KEY repository secret (an API key with read permission).
+name: Manual check
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: read # so the Action can read which files this pull request changes
+
+jobs:
+  manual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: deploylogdev/action@v1
+        with:
+          api-key: ${{ secrets.DEPLOYLOG_API_KEY }}
+          project: deploylog
+          mode: verify
+          github-token: ${{ github.token }}
