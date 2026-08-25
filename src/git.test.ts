@@ -6,6 +6,9 @@ import {
   getCommitsSince,
   defaultTitleFromGit,
   formatCommitsAsMarkdown,
+  originSlug,
+  headSha,
+  changedPathsSince,
   type GitRunner,
 } from './git.js'
 
@@ -139,5 +142,91 @@ describe('formatCommitsAsMarkdown()', () => {
       { hash: 'b', subject: 'fix: y' },
     ])
     expect(md).toBe('- feat: x\n- fix: y')
+  })
+})
+
+describe('originSlug()', () => {
+  const cases: Array<[string, string]> = [
+    ['https://github.com/marko-builds/deploylog.git', 'marko-builds/deploylog'],
+    ['https://github.com/marko-builds/deploylog', 'marko-builds/deploylog'],
+    ['https://github.com/marko-builds/deploylog/', 'marko-builds/deploylog'],
+    ['https://user@github.com/marko-builds/deploylog.git', 'marko-builds/deploylog'],
+    ['git@github.com:marko-builds/deploylog.git', 'marko-builds/deploylog'],
+    ['git@github.com:marko-builds/deploylog', 'marko-builds/deploylog'],
+    ['ssh://git@github.com/marko-builds/deploylog.git', 'marko-builds/deploylog'],
+    ['ssh://git@github.com:22/marko-builds/deploylog.git', 'marko-builds/deploylog'],
+    ['git://github.com/marko-builds/deploylog.git', 'marko-builds/deploylog'],
+    ['https://github.com/my.org/repo.name.git', 'my.org/repo.name'],
+  ]
+  for (const [url, slug] of cases) {
+    it(`parses ${url}`, () => {
+      const run = stubRunner({ 'remote get-url origin': url })
+      expect(originSlug(run)).toEqual({ kind: 'slug', slug })
+    })
+  }
+
+  it('no-remote when get-url fails', () => {
+    expect(originSlug(stubRunner({}))).toEqual({ kind: 'no-remote' })
+  })
+
+  it('no-remote on empty output', () => {
+    expect(originSlug(stubRunner({ 'remote get-url origin': '' }))).toEqual({ kind: 'no-remote' })
+  })
+
+  it('not-github for a GitLab remote, carrying the url', () => {
+    const url = 'git@gitlab.com:someone/repo.git'
+    expect(originSlug(stubRunner({ 'remote get-url origin': url }))).toEqual({
+      kind: 'not-github',
+      url,
+    })
+  })
+
+  it('not-github for a github.com url with no repo segment', () => {
+    const url = 'https://github.com/marko-builds'
+    expect(originSlug(stubRunner({ 'remote get-url origin': url }))).toEqual({
+      kind: 'not-github',
+      url,
+    })
+  })
+
+  it('not-github for a lookalike host', () => {
+    const url = 'https://github.com.evil.example/marko-builds/deploylog.git'
+    expect(originSlug(stubRunner({ 'remote get-url origin': url })).kind).toBe('not-github')
+  })
+})
+
+describe('headSha()', () => {
+  it('returns the sha rev-parse prints', () => {
+    const sha = 'a'.repeat(40)
+    expect(headSha(stubRunner({ 'rev-parse HEAD': sha }))).toBe(sha)
+  })
+  it('null when rev-parse fails (empty repository)', () => {
+    expect(headSha(stubRunner({}))).toBeNull()
+  })
+  it('null on empty output', () => {
+    expect(headSha(stubRunner({ 'rev-parse HEAD': '' }))).toBeNull()
+  })
+})
+
+describe('changedPathsSince()', () => {
+  const KEY = '-c core.quotePath=false diff --name-only --no-renames main...HEAD'
+
+  it('runs the three-dot diff with quotePath off and renames off', () => {
+    const run = stubRunner({ [KEY]: 'a.ts\nb/c.ts' })
+    expect(changedPathsSince('main', run)).toEqual(['a.ts', 'b/c.ts'])
+  })
+
+  it('returns [] for an empty diff (the caller must not send it)', () => {
+    expect(changedPathsSince('main', stubRunner({ [KEY]: '' }))).toEqual([])
+  })
+
+  it('returns null when git fails (unknown base)', () => {
+    expect(changedPathsSince('main', stubRunner({}))).toBeNull()
+  })
+
+  it('keeps a non-ASCII path whole', () => {
+    expect(changedPathsSince('main', stubRunner({ [KEY]: 'docs/naïve.md' }))).toEqual([
+      'docs/naïve.md',
+    ])
   })
 })
