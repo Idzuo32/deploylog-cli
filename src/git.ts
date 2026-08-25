@@ -103,3 +103,57 @@ export function formatCommitsAsMarkdown(commits: CommitSummary[]): string {
   if (commits.length === 0) return '_No new commits since last tag._'
   return commits.map((c) => `- ${c.subject}`).join('\n')
 }
+
+// ─── manual verify derivations ──────────────────────────────────────────────
+// Each helper answers one question the verify body needs and reports failure by
+// kind, never by throwing: the command turns each kind into a named error that
+// says which flag to pass instead.
+
+const GITHUB_REMOTE =
+  /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/(?:[^@/]+@)?github\.com(?::\d+)?\/|git:\/\/github\.com\/)([^/]+)\/([^/]+?)(?:\.git)?\/?$/i
+
+export type OriginSlug =
+  | { kind: 'slug'; slug: string }
+  | { kind: 'no-remote' }
+  | { kind: 'not-github'; url: string }
+
+/**
+ * `owner/repo` parsed out of `git remote get-url origin`, in its HTTPS and SSH
+ * spellings. A remote that is not github.com is reported with its url so the
+ * caller can say what it saw.
+ */
+export function originSlug(run: GitRunner = runGit): OriginSlug {
+  const url = run(['remote', 'get-url', 'origin'])
+  if (url === null || url.trim().length === 0) return { kind: 'no-remote' }
+  const m = url.trim().match(GITHUB_REMOTE)
+  if (!m?.[1] || !m[2]) return { kind: 'not-github', url: url.trim() }
+  return { kind: 'slug', slug: `${m[1]}/${m[2]}` }
+}
+
+/** The full sha at HEAD, or null when there is no HEAD (an empty repository). */
+export function headSha(run: GitRunner = runGit): string | null {
+  const out = run(['rev-parse', 'HEAD'])
+  return out && out.length > 0 ? out : null
+}
+
+/**
+ * Paths changed between the merge base of `base` and HEAD, or null when git
+ * could not compute the diff (an unknown base, or one sharing no history).
+ *
+ * `core.quotePath=false` so a non-ASCII path is not octal-escaped into a string
+ * that matches no anchor; `--no-renames` so a claim citing the OLD path of a
+ * renamed file still lands in scope, the way the Action keeps
+ * `previous_filename`. An empty diff is `[]`, which the caller must not send.
+ */
+export function changedPathsSince(base: string, run: GitRunner = runGit): string[] | null {
+  const out = run([
+    '-c',
+    'core.quotePath=false',
+    'diff',
+    '--name-only',
+    '--no-renames',
+    `${base}...HEAD`,
+  ])
+  if (out === null) return null
+  return out.split('\n').filter((line) => line.length > 0)
+}

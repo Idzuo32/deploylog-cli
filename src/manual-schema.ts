@@ -9,7 +9,7 @@
 
 import { z } from 'zod'
 
-const REPOSITORY_SLUG = /^[\w.-]+\/[\w.-]+$/
+export const REPOSITORY_SLUG = /^[\w.-]+\/[\w.-]+$/
 
 export const CommitShaSchema = z
   .string()

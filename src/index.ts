@@ -24,6 +24,7 @@ import {
 import { runInit, defaultInitDeps } from './init.js'
 import { runOpen } from './open.js'
 import { runManualExport } from './manual.js'
+import { runManualVerify, isFailOn, FAIL_ON_VALUES, DEFAULT_FAIL_ON } from './manual-verify.js'
 
 const program = new Command()
 
@@ -226,6 +227,61 @@ manual
       handleError(err, opts.json)
     }
   })
+
+manual
+  .command('verify')
+  .description('Check the manual against the code it cites at this commit; exit code follows --fail-on')
+  .option('-p, --project <slug>', 'Project slug (or set in .deploylog.yml)')
+  .option('--repository <owner/repo>', 'Repository to verify as (default: parsed from `git remote get-url origin`)')
+  .option('--ref <sha>', 'Full commit sha to verify at (default: `git rev-parse HEAD`)')
+  .option('--changed-from <base>', 'Only claims citing files changed since <base> (default: the whole manual)')
+  .option(
+    '--fail-on <mode>',
+    `What fails the check: ${FAIL_ON_VALUES.join(' | ')} (default: ${DEFAULT_FAIL_ON})`,
+  )
+  .option('--json', 'Print the validated report as JSON on stdout, nothing else')
+  .action(
+    async (opts: {
+      project?: string
+      repository?: string
+      ref?: string
+      changedFrom?: string
+      failOn?: string
+      json?: boolean
+    }) => {
+      try {
+        const failOn = opts.failOn?.trim().toLowerCase()
+        if (failOn !== undefined && !isFailOn(failOn)) {
+          const message = `Invalid value for --fail-on: "${opts.failOn}". Expected one of: ${FAIL_ON_VALUES.join(', ')}.`
+          if (opts.json) printJsonError('INVALID_FAIL_ON', message)
+          else console.error(chalk.red(message))
+          process.exit(1)
+        }
+        const result = await runManualVerify({
+          project: opts.project,
+          repository: opts.repository,
+          ref: opts.ref,
+          changedFrom: opts.changedFrom,
+          failOn: failOn,
+          json: opts.json,
+        })
+        switch (result.kind) {
+          case 'verified':
+            // The report (or the JSON payload) is already on stdout; only the
+            // exit code is left, and it is the whole point of the command.
+            if (result.exitCode !== 0) process.exit(result.exitCode)
+            break
+          default:
+            if (opts.json)
+              printJsonError(result.kind.toUpperCase().replace(/-/g, '_'), result.message)
+            else console.error(chalk.red(result.message))
+            process.exit(1)
+        }
+      } catch (err) {
+        handleError(err, opts.json)
+      }
+    },
+  )
 
 // ─── list ───────────────────────────────────────────────────────────────────
 

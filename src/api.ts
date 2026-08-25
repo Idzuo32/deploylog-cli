@@ -259,3 +259,21 @@ export async function exportManual(projectSlug: string): Promise<unknown> {
   const params = new URLSearchParams({ project: projectSlug })
   return request(`/manual/export?${params.toString()}`)
 }
+
+// ─── Manual verify ──────────────────────────────────────────────────────────
+
+/**
+ * `POST /api/cli/manual/verify`. The body is typed only as far as "already
+ * validated by the caller" and the report comes back untyped on purpose: the
+ * caller validates it against the mirrored server schema
+ * (`manual-verify-schema.ts`) before anything is printed or an exit code is
+ * decided.
+ */
+export async function verifyManual(body: {
+  project: string
+  repository: string
+  ref: string
+  changedFiles: string[] | null
+}): Promise<unknown> {
+  return request('/manual/verify', { method: 'POST', body: JSON.stringify(body) })
+}
