@@ -1,6 +1,6 @@
 # 05 — The manual check runs on this repository's pull requests
 
-**Status:** PR open (blocked on the DEPLOYLOG_API_KEY secret, which this repository does not have; Marko adds it)
+**Status:** done (merged 323b283 2026-08-25; the Manual check ran green on its own pull request, zero claims evaluated as expected)
 **Type:** AFK
 **Lane:** deploylog-cli
 **Parent:** deploylog/issues/93-chapter-00-cross-refs-set-publish-v1.md
@@ -12,9 +12,9 @@
 Chapter 05 of the DeployLog manual cites `README.md`, `src/index.ts`, `src/push.ts`, `src/init.ts` and `src/manual-verify.ts` in this repository (51 claims). A run of the Action's verify mode checks only the claims that cite the repository it runs in, so from the deploylog repo those 51 report `unmapped_repository`, and no push anywhere verifies them (`deploylog manual verify`, 2026-08-25). Add `.github/workflows/manual-check.yml`, the same file the deploylog repo runs (`deploylogdev/action@v1`, `mode: verify`, `project: deploylog`, `fail-on` left at its default `none`). This repository has no `DEPLOYLOG_API_KEY` secret: the first run fails until Marko adds one (`gh secret set DEPLOYLOG_API_KEY --repo marko-builds/deploylog-cli`, a read key from the dashboard's API Keys page), which is the known negative for the check.
 
 ## Acceptance criteria
-- [ ] `.github/workflows/manual-check.yml` on main, byte-identical to the deploylog repo's apart from the comment
-- [ ] Marko-only: the `DEPLOYLOG_API_KEY` secret exists in this repository
-- [ ] The `Manual check` run completes on a pull request after the secret exists
+- [x] `.github/workflows/manual-check.yml` on main, byte-identical to the deploylog repo's apart from the comment
+- [x] Marko-only: the `DEPLOYLOG_API_KEY` secret exists in this repository (added 2026-08-25)
+- [x] The `Manual check` run completes on a pull request after the secret exists
 - [ ] The first later pull request touching `src/index.ts` shows the chapter 05 claims evaluated
 
 ## Boundaries
