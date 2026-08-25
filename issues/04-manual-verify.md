@@ -1,6 +1,6 @@
 # 04 — `deploylog manual verify`: the drift check from a terminal or any CI
 
-**Status:** done 2026-08-25 — PR #9 merged (`097dfff`), 171 tests, tsc + build green; version left at 0.5.0, `npm publish` is Marko's · **Type:** AFK · **Lane:** deploylog-cli
+**Status:** done 2026-08-25 — PR #9 merged (`097dfff`), 171 tests, tsc + build green; published by Marko as `deploylog@0.6.0` on 2026-08-25 (tag v0.6.0) · **Type:** AFK · **Lane:** deploylog-cli
 **Parent:** deploylog/issues/56-manual-verify-endpoint.md (server half, done) → deploylog/issues/prd-manual.md
 **Blocked by:** None in this repo. The observable arm needs `POST /api/cli/manual/verify` live on deploylog.dev (it is; `deploylog-action` verify mode calls it).
 **Verification:** `vitest run` — command tests with a mocked `api.ts` response: exit code follows `--fail-on` for each of the three outcomes (drift found / could not check / clean), `--json` emits only the validated payload, a response that fails the mirrored schema exits non-zero. Signal: `vitest run`.
