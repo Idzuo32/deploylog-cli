@@ -84,7 +84,7 @@ deploylog list --drafts --json | jq -r '.[0].id'
 
 ## manual export
 
-A manual is the project's versioned prose, its commit map, and the claims each chapter pins to code.
+A manual is the project's versioned prose, its commit map (the commit each cited repository was pinned at when the version was cut), and the claims each chapter pins to code.
 
 ```bash
 deploylog manual export -o - | jq '.versions | length'
@@ -119,3 +119,4 @@ Two guards stop a false clean. An empty diff is not a scope: when nothing change
 # In a pre-push hook: block the push on drift
 deploylog manual verify || exit 1
 ```
+
