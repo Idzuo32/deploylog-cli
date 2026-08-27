@@ -25,6 +25,7 @@ import { runInit, defaultInitDeps } from './init.js'
 import { runOpen } from './open.js'
 import { runManualExport } from './manual.js'
 import { runManualVerify, isFailOn, FAIL_ON_VALUES, DEFAULT_FAIL_ON } from './manual-verify.js'
+import { getCliVersion } from './version.js'
 
 const program = new Command()
 
@@ -35,7 +36,8 @@ program
   // `push --version 1.4.0` and prints the CLI version instead of setting the
   // entry's semver. Program options now must precede the subcommand.
   .enablePositionalOptions()
-  .version('0.5.0')
+  // Read from package.json: the hardcoded string shipped stale (0.5.0 on 0.6.0).
+  .version(getCliVersion())
 
 // ─── login ──────────────────────────────────────────────────────────────────
 
