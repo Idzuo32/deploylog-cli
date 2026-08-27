@@ -15,7 +15,7 @@ Chapter 05 of the DeployLog manual cites `README.md`, `src/index.ts`, `src/push.
 - [x] `.github/workflows/manual-check.yml` on main, byte-identical to the deploylog repo's apart from the comment
 - [x] Marko-only: the `DEPLOYLOG_API_KEY` secret exists in this repository (added 2026-08-25)
 - [x] The `Manual check` run completes on a pull request after the secret exists
-- [ ] The first later pull request touching `src/index.ts` shows the chapter 05 claims evaluated
+- [x] The first later pull request touching `src/index.ts` shows the chapter 05 claims evaluated (PR #13, 2026-08-27: run 33057881948 green; `deploylog manual verify --changed-from main` on the PR head e10d68e reports chapter 05 SUSPECT with `touched = marko-builds/deploylog-cli:src/index.ts`, 0 drift, 0 errors; the run's one "could not vouch" reason is the 419 deploylog-repo claims this repository never visits, which its own workflow covers)
 
 ## Boundaries
 - Do NOT add secrets by hand; report the missing one
