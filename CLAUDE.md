@@ -63,10 +63,12 @@ issues/NN-slug.md      one file per work item (header fields, What to build, Acc
 6. **The version comes from `package.json`** through `version.ts`. The literal in `index.ts`
    shipped stale once (`0.5.0` on the `0.6.0` package, found 2026-08-27); `version.test.ts` fails
    if the two diverge again.
-7. **Comments cite their ledger.** `BUG-nnn` refers to `projects/deploylog/docs/bug-audit-findings.md`
-   (BUG-011 is `request()`'s defensive parsing, BUG-012 the `apiUrl` normalization); `A3` and
-   friends refer to this repo's `issues/` (A3 = issue 02, the honest project-config error).
-8. **The command surface is a contract.** The roadmap's 💥 rule (`projects/deploylog/docs/roadmap.md`,
+7. **Comments cite a ledger that has been retired.** `BUG-nnn` referred to a bug-audit file in
+   the web repo and `A3` and friends to numbered issues here; both were spent and deleted in the
+   2026-08-29 cleanup. The codes stay in the comments because they are still the honest
+   provenance - resolve one with `git log -S'BUG-011'` in the repo it belongs to. Do not
+   reintroduce either ledger; issues that are still open live in `issues/`.
+8. **The command surface is a contract.** The roadmap's 💥 rule (`../deploylog/docs/roadmap.md`,
    "version, never break") names the CLI command surface as one of three stable contracts. Rename
    or remove a flag only with a deprecation path and a major bump.
 
